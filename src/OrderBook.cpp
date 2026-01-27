@@ -2,8 +2,6 @@
 #include <algorithm>
 #include <iostream>
 
-OrderBook::OrderBook() : pool(100000) {}
-
 void OrderBook::addOrder(Order* order) {
     // Try to match immediately
     if (order->side == Side::Buy) {
@@ -27,7 +25,7 @@ void OrderBook::addOrder(Order* order) {
                     Order* nextOrder = restingOrder->next;
                     bestAsk->removeOrder(restingOrder);
                     orderMap.erase(restingOrder->orderId);
-                    // pool.release(restingOrder); 
+                    pool.release(restingOrder); 
                     restingOrder = nextOrder;
                 } else {
                     restingOrder = restingOrder->next;
@@ -60,7 +58,7 @@ void OrderBook::addOrder(Order* order) {
                     Order* nextOrder = restingOrder->next;
                     bestBid->removeOrder(restingOrder);
                     orderMap.erase(restingOrder->orderId);
-                    // pool.release(restingOrder);
+                    pool.release(restingOrder);
                     restingOrder = nextOrder;
                 } else {
                     restingOrder = restingOrder->next;
@@ -91,7 +89,7 @@ void OrderBook::addOrder(Order* order) {
         }
     } else {
         // Order was filled instantly
-        // pool.release(order);
+        pool.release(order);
     }
 }
 
@@ -121,4 +119,5 @@ void OrderBook::cancelOrder(uint64_t orderId) {
     }
 
     orderMap.erase(orderId);
+    pool.release(order);
 }
