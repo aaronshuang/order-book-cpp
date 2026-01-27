@@ -5,7 +5,7 @@
 
 class OrderPool {
 private:
-    Order* pool; // linked list of orders
+    Order* pool;
     std::vector<Order*> freeList;
     size_t poolSize;
 
@@ -13,8 +13,9 @@ public:
     OrderPool(size_t size) : poolSize(size) {
         pool = static_cast<Order*>(::operator new(size * sizeof(Order)));
 
+        // Fill the free list with pointers to pool slots
         for (size_t i = 0; i < size; i++) {
-            freeList.push_back(&pool[i]); // fill the free list with pointers to pool slots
+            freeList.push_back(&pool[i]);
         }
     }
 

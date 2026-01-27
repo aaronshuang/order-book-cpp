@@ -1,5 +1,6 @@
 #pragma once
 #include "Limit.hpp"
+#include "MemoryPool.hpp"
 #include <unordered_map>
 #include <map>
 
@@ -11,9 +12,11 @@ private:
 
     std::unordered_map<uint64_t, Order*> orderMap;
 
+    OrderPool pool;
+
 public:
     void addOrder(Order* order);
     void cancelOrder(uint64_t orderId);
-    void match();
+    OrderBook();
 };
 
