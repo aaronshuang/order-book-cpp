@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include "OrderBook.hpp"
+#include <random>
 
 // Helper for cleaner test output
 #define RUN_TEST(testFunc) \
@@ -82,6 +83,48 @@ void test_full_cycle_memory_recycling() {
     assert(ob.getOrderCount() == 0);
 }
 
+void test_high_volatility_benchmark() {
+    std::cout << "\n--- Test: High Volatility FlatMap Benchmark (1M Orders) ---" << std::endl;
+    OrderBook ob;
+    
+    const int NUM_ORDERS = 1000000;
+    std::mt19937 rng(1337); 
+    
+    // We simulate a "Random Walk" for the price to create many Limit levels
+    std::uniform_int_distribution<int> price_offset(-5, 5);
+    std::uniform_int_distribution<int> side_dist(0, 1);
+    uint64_t current_price = 10000;
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < NUM_ORDERS; ++i) {
+        // Price drifts over time, creating a deep book
+        current_price += price_offset(rng);
+        Side side = (side_dist(rng) == 0) ? Side::Buy : Side::Sell;
+        
+        // Every 5th order is a "Market Cross" to trigger matching logic
+        uint64_t order_price = current_price;
+        if (i % 5 == 0) {
+            order_price = (side == Side::Buy) ? current_price + 10 : current_price - 10;
+        }
+
+        ob.addOrder(ob.createOrder(i, order_price, 10, side));
+
+        // Periodic cancellations to simulate real-world churn
+        if (i > 200 && i % 10 == 0) {
+            ob.cancelOrder(i - 150);
+        }
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff = end - start;
+
+    std::cout << "Volatility Results:" << std::endl;
+    std::cout << "Total Time: " << diff.count() << " s" << std::endl;
+    std::cout << "Throughput: " << (int)(NUM_ORDERS / diff.count()) << " orders/sec" << std::endl;
+    std::cout << "Avg Latency: " << (diff.count() / NUM_ORDERS) * 1e9 << " ns/order" << std::endl;
+}
+
 int main() {
     std::cout << "--- STARTING COMPREHENSIVE VALIDATION ---" << std::endl;
     
@@ -90,6 +133,7 @@ int main() {
     RUN_TEST(test_multiple_level_exhaustion);
     RUN_TEST(test_cancel_non_existent);
     RUN_TEST(test_full_cycle_memory_recycling);
+    RUN_TEST(test_high_volatility_benchmark);
 
     std::cout << "--- ALL CORE LOGIC VERIFIED ---" << std::endl;
     return 0;

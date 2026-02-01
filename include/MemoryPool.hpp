@@ -3,14 +3,15 @@
 #include <stdexcept>
 #include "Order.hpp"
 
-class OrderPool {
+template <typename T>
+class MemoryPool {
 private:
-    Order* pool;
-    std::vector<Order*> freeList;
+    T* pool;
+    std::vector<T*> freeList;
 
 public:
-    OrderPool(size_t size) {
-        pool = static_cast<Order*>(::operator new(size * sizeof(Order)));
+    MemoryPool(size_t size) {
+        pool = static_cast<T*>(::operator new(size * sizeof(T)));
 
         // Fill the free list with pointers to pool slots
         for (size_t i = 0; i < size; i++) {
@@ -18,21 +19,24 @@ public:
         }
     }
 
-    Order* acquire(uint64_t id, uint64_t p, uint32_t q, Side s) {
+    template <typename... Args>
+    T* acquire(Args&&... args) {
         if (freeList.empty()) {
             throw std::runtime_error("Pool Exhausted");
         }
-        Order* order = freeList.back();
+        T* object = freeList.back();
         freeList.pop_back();
 
-        return new (order) Order(id, p, q, s);
+        new (object) T(std::forward<Args>(args)...);
+
+        return object;
     }
 
-    void release(Order* order) {
-        freeList.push_back(order);
+    void release(T* object) {
+        freeList.push_back(object);
     }
 
-    ~OrderPool(){
+    ~MemoryPool(){
         ::operator delete(pool);
     }
 };

@@ -7,7 +7,7 @@ void OrderBook::addOrder(Order* order) {
     if (order->side == Side::Buy) {
         // While we can match Buys to Asks
         while (order->quantity > 0 && !asks.empty()) {
-            Limit* bestAsk = asks.begin()->second;
+            Limit* bestAsk = asks.getBestValue();
 
             // Check Price Condition
             if (order->price < bestAsk->price) break; 
@@ -25,7 +25,7 @@ void OrderBook::addOrder(Order* order) {
                     Order* nextOrder = restingOrder->next;
                     bestAsk->removeOrder(restingOrder);
                     orderMap.erase(restingOrder->orderId);
-                    pool.release(restingOrder); 
+                    orderPool.release(restingOrder); 
                     restingOrder = nextOrder;
                 } else {
                     restingOrder = restingOrder->next;
@@ -34,15 +34,16 @@ void OrderBook::addOrder(Order* order) {
 
             // Cleanup Price Level if empty
             if (bestAsk->orderCount == 0) {
-                delete bestAsk;
-                asks.erase(asks.begin());
+                // delete bestAsk;
+                asks.popBest();
+                limitPool.release(bestAsk);
             }
         }
     } 
     else {
         // While we can match Sells to Bids
         while (order->quantity > 0 && !bids.empty()) {
-            Limit* bestBid = bids.begin()->second;
+            Limit* bestBid = bids.getBestValue();
 
             if (order->price > bestBid->price) break;
 
@@ -58,7 +59,7 @@ void OrderBook::addOrder(Order* order) {
                     Order* nextOrder = restingOrder->next;
                     bestBid->removeOrder(restingOrder);
                     orderMap.erase(restingOrder->orderId);
-                    pool.release(restingOrder);
+                    orderPool.release(restingOrder);
                     restingOrder = nextOrder;
                 } else {
                     restingOrder = restingOrder->next;
@@ -66,58 +67,68 @@ void OrderBook::addOrder(Order* order) {
             }
 
             if (bestBid->orderCount == 0) {
-                delete bestBid;
-                bids.erase(bids.begin());
+                // delete bestBid;
+                bids.popBest();
+                limitPool.release(bestBid);
             }
         }
     }
     
     // Add to book if the order was not fully filled
     if (order->quantity > 0) {
-        orderMap[order->orderId] = order;
-        
+        // orderMap[order->orderId] = order;
+        orderMap.insert(order->orderId, order);
+        // Single pass lookup/insert
         if (order->side == Side::Buy) {
-            if (bids.find(order->price) == bids.end()) {
-                bids[order->price] = new Limit(order->price);
+            Limit*& limitRef = bids.getOrCreate(order->price);
+            if (!limitRef) {
+                limitRef = limitPool.acquire(order->price);
             }
-            bids[order->price]->addOrder(order);
-        } else {
-            if (asks.find(order->price) == asks.end()) {
-                asks[order->price] = new Limit(order->price);
-            }
-            asks[order->price]->addOrder(order);
+            limitRef->addOrder(order);
         }
-    } else {
-        // Order was filled instantly
-        pool.release(order);
+        else {
+            Limit*& limitRef = asks.getOrCreate(order->price);
+            if (!limitRef) {
+                limitRef = limitPool.acquire(order->price);
+            }
+            limitRef->addOrder(order);
+        }
+    } 
+    else {
+        // Instantly Filled
+        orderPool.release(order);
     }
 }
 
 void OrderBook::cancelOrder(uint64_t orderId) {
-    if (orderMap.find(orderId) == orderMap.end()) return;
+    // if (orderMap.find(orderId) == orderMap.end()) return;
 
-    Order* order = orderMap[orderId];
+    // Order* order = orderMap[orderId];
+    Order* order = orderMap.find(orderId);
+    if (!order) return;
     if (order->side == Side::Buy) {
-        auto it = bids.find(order->price);
-        if (it != bids.end()) {
-            it->second->removeOrder(order);
-            if (it->second->orderCount == 0) {
-                delete it->second;
-                bids.erase(it);
+        int idx = bids.indexOf(order->price);
+        if (idx != -1) {
+            Limit* limit = bids.getOrCreate(order->price);
+            limit->removeOrder(order);
+            if (limit->orderCount == 0) {
+                limitPool.release(limit);
+                bids.remove(order->price);
             }
         }
     }
     else {
-        auto it = asks.find(order->price);
-        if (it != asks.end()) {
-            it->second->removeOrder(order);
-            if (it->second->orderCount == 0) {
-                delete it->second;
-                asks.erase(it);
+        int idx = asks.indexOf(order->price);
+        if (idx != -1) {
+            Limit* limit = asks.getOrCreate(order->price);
+            limit->removeOrder(order);
+            if (limit->orderCount == 0) {
+                limitPool.release(limit);
+                asks.remove(order->price);
             }
         }
     }
 
     orderMap.erase(orderId);
-    pool.release(order);
+    orderPool.release(order);
 }

@@ -1,24 +1,30 @@
 #pragma once
 #include "Limit.hpp"
 #include "MemoryPool.hpp"
+#include "FlatMap.hpp"
+#include "FastOrderMap.hpp"
 #include <unordered_map>
 #include <map>
 
 
 class OrderBook {
 private:
-    std::map<uint64_t, Limit*, std::greater<uint64_t>> bids;
-    std::map<uint64_t, Limit*> asks;
+    FlatMap<uint64_t, Limit*, std::less<uint64_t>> bids;
+    FlatMap<uint64_t, Limit*, std::greater<uint64_t>> asks;
 
-    std::unordered_map<uint64_t, Order*> orderMap;
+    FastOrderMap<1 << 21> orderMap;
 
-    OrderPool pool;
+    MemoryPool<Order> orderPool;
+    MemoryPool<Limit> limitPool;
 
 public:
-    OrderBook() : pool(1200000) {};
+    OrderBook() : orderPool(1200000), limitPool(1200000) {};
 
     Order* createOrder(uint64_t id, uint64_t price, uint32_t quantity, Side side) {
-        return pool.acquire(id, price, quantity, side);
+        return orderPool.acquire(id, price, quantity, side);
+    }
+    Limit* createLimit(uint64_t price) {
+        return limitPool.acquire(price);
     }
 
     void addOrder(Order* order);
@@ -30,14 +36,15 @@ public:
 
     uint32_t getVolumeAtPrice(Side side, uint64_t price) {
         if (side == Side::Buy) {
-            return (bids.count(price)) ? bids.at(price)->totalVolume : 0;
-        }
-        else {
-            return (asks.count(price)) ? asks.at(price)->totalVolume : 0;
+            int idx = bids.indexOf(price);
+            return (idx != -1) ? bids.getOrCreate(price)->totalVolume : 0; 
+        } else {
+            int idx = asks.indexOf(price);
+            return (idx != -1) ? asks.getOrCreate(price)->totalVolume : 0;
         }
     }
 
-    uint64_t getBestBid() const { return bids.empty() ? 0 : bids.begin()->first; }
-    uint64_t getBestAsk() const { return asks.empty() ? 0 : asks.begin()->first; }
+    uint64_t getBestBid() const { return bids.empty() ? 0 : bids.getBestKey(); }
+    uint64_t getBestAsk() const { return asks.empty() ? 0 : asks.getBestKey(); }
 };
 
